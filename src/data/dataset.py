@@ -44,18 +44,34 @@ def list_images(directory: Path) -> List[Path]:
 
 
 def resolve_split_dir(root: str | Path, split: str) -> Path:
-    """Find the directory for `split` under `root`, accepting name variants."""
+    """Find the directory for `split` under `root`, accepting name variants.
+
+    Matches by listing the directory rather than probing `root / name`, so it is
+    case-insensitive on case-sensitive filesystems too. Datasets differ here:
+    the 140k set ships `train/valid/test`, others ship `Train/Validation/Test`,
+    and Linux will not find one when you ask for the other.
+    """
     root = Path(root)
+    if not root.is_dir():
+        raise FileNotFoundError(f"Dataset root not found: {root}")
+
+    present = {p.name.lower(): p for p in root.iterdir() if p.is_dir()}
     for candidate in SPLIT_ALIASES.get(split, [split]):
-        path = root / candidate
-        if path.is_dir():
-            return path
-    tried = SPLIT_ALIASES.get(split, [split])
-    present = sorted(p.name for p in root.iterdir() if p.is_dir()) if root.is_dir() else []
+        if candidate in present:
+            return present[candidate]
+
     raise FileNotFoundError(
-        f"No '{split}' split under {root} (tried {tried}). "
-        f"Subdirectories present: {present}"
+        f"No '{split}' split under {root} (tried {SPLIT_ALIASES.get(split, [split])}). "
+        f"Subdirectories present: {sorted(p.name for p in root.iterdir() if p.is_dir())}"
     )
+
+
+def resolve_class_dir(split_dir: Path, class_name: str) -> Optional[Path]:
+    """Locate the real/ or fake/ folder inside a split, ignoring case."""
+    for child in split_dir.iterdir():
+        if child.is_dir() and child.name.lower() == class_name:
+            return child
+    return None
 
 
 class FaceImageDataset(Dataset):
@@ -70,8 +86,8 @@ class FaceImageDataset(Dataset):
         self.transform = transform
         self.samples: List[Tuple[Path, int]] = []
         for class_name, label in CLASS_TO_LABEL.items():
-            class_dir = self.split_dir / class_name
-            if not class_dir.is_dir():
+            class_dir = resolve_class_dir(self.split_dir, class_name)
+            if class_dir is None:
                 continue
             print(f"  scanning {class_dir} ...", end="", flush=True)
             paths = list_images(class_dir)
