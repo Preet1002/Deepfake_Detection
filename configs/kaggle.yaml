@@ -1,0 +1,46 @@
+# Training config for a Kaggle Notebook with a T4 or P100 GPU.
+#
+# Reads the competition dataset straight off the read-only mount - no copying,
+# no prepare step. The loader accepts Kaggle's "valid" folder as the val split.
+#
+# Notebook settings required: Accelerator = GPU T4 x2 (or P100), Internet = On,
+# and the "140k Real and Fake Faces" dataset added as an input.
+
+data:
+  root: /kaggle/input/140k-real-and-fake-faces/real_vs_fake/real-vs-fake
+  img_size: 224          # source images are 256px; less downsampling keeps the
+                         # high-frequency artefacts the SRM branch relies on
+  batch_size: 128        # comfortable on 16 GB of T4/P100 VRAM
+  num_workers: 4         # Kaggle GPU sessions give 4 vCPUs
+  pin_memory: true
+  limit_per_class: null  # set to e.g. 4000 for a fast shakedown run
+
+model:
+  stem_channels: 32
+  stage_channels: [64, 128, 256, 384]
+  blocks_per_stage: [2, 2, 2, 2]
+  use_srm: true
+  se_ratio: 0.25
+  dropout: 0.3
+
+aug:
+  hflip: 0.5
+  jpeg: 0.5              # if GPU utilisation sits low, drop this to 0.3 - the
+                         # JPEG re-encode is the most expensive CPU-side op
+  jpeg_quality: [40, 95]
+  downscale: 0.3
+  blur: 0.2
+  color_jitter: 0.5
+  random_erasing: 0.25
+
+train:
+  epochs: 25
+  lr: 0.0006             # scaled up with the larger batch size
+  weight_decay: 0.05
+  warmup_epochs: 2
+  label_smoothing: 0.05
+  early_stop_patience: 6
+  amp: true              # mixed precision: roughly 2x throughput on CUDA
+  out_dir: /kaggle/working/runs/dfnet
+  seed: 42
+  device: auto

@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deepfake Detection</title>
+<style>
+  :root {
+    --bg: #0f1117; --panel: #171a23; --panel-2: #1e222d; --border: #2a2f3d;
+    --text: #e6e9f0; --muted: #9aa3b5; --accent: #6ea8fe;
+    --real: #3ddc97; --fake: #ff5c7a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 32px 20px; background: var(--bg); color: var(--text);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 940px; margin: 0 auto; }
+  header { text-align: center; margin-bottom: 28px; }
+  h1 { margin: 0 0 6px; font-size: 27px; letter-spacing: -0.4px; }
+  .sub { color: var(--muted); font-size: 14px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 14px; padding: 22px; margin-bottom: 18px;
+  }
+  #drop {
+    border: 2px dashed var(--border); border-radius: 12px; padding: 44px 20px;
+    text-align: center; cursor: pointer; transition: .18s; background: var(--panel-2);
+  }
+  #drop:hover, #drop.over { border-color: var(--accent); background: #202634; }
+  #drop p { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+  .drop-title { font-size: 16px; font-weight: 600; }
+  .controls {
+    display: flex; gap: 20px; align-items: center; flex-wrap: wrap;
+    margin-top: 16px; font-size: 13px; color: var(--muted);
+  }
+  .controls label { display: flex; gap: 8px; align-items: center; }
+  input[type=range] { accent-color: var(--accent); }
+  .verdict { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+  .badge {
+    font-size: 21px; font-weight: 700; padding: 9px 20px; border-radius: 10px;
+    letter-spacing: .5px;
+  }
+  .badge.real { background: rgba(61,220,151,.14); color: var(--real); border: 1px solid rgba(61,220,151,.35); }
+  .badge.fake { background: rgba(255,92,122,.14); color: var(--fake); border: 1px solid rgba(255,92,122,.35); }
+  .meter { flex: 1; min-width: 220px; }
+  .bar { height: 9px; background: var(--panel-2); border-radius: 6px; overflow: hidden; border: 1px solid var(--border); }
+  .bar span { display: block; height: 100%; transition: width .45s ease; }
+  .meter-labels { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .images { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; margin-top: 20px; }
+  .images figure { margin: 0; }
+  .images img { width: 100%; border-radius: 10px; border: 1px solid var(--border); display: block; }
+  .images figcaption { font-size: 12px; color: var(--muted); margin-top: 7px; text-align: center; }
+  .meta { margin-top: 16px; font-size: 12.5px; color: var(--muted); display: flex; gap: 18px; flex-wrap: wrap; }
+  .note { font-size: 12.5px; color: var(--muted); border-left: 2px solid var(--border); padding-left: 12px; margin-top: 16px; }
+  .err { color: var(--fake); }
+  .hidden { display: none; }
+  .spinner {
+    width: 22px; height: 22px; border: 2.5px solid var(--border);
+    border-top-color: var(--accent); border-radius: 50%;
+    animation: spin .8s linear infinite; margin: 0 auto;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Deepfake Detection</h1>
+    <div class="sub">DFNet &mdash; two-stream CNN trained from scratch on face images</div>
+  </header>
+
+  <div class="card">
+    <div id="drop">
+      <div class="drop-title">Drop a face image here, or click to browse</div>
+      <p>JPEG, PNG or WebP &middot; up to 15 MB</p>
+      <input id="file" type="file" accept="image/*" class="hidden">
+    </div>
+    <div class="controls">
+      <label><input id="explain" type="checkbox" checked> Grad-CAM heatmap</label>
+      <label>
+        Decision threshold
+        <input id="threshold" type="range" min="0.05" max="0.95" step="0.05" value="0.5">
+        <strong id="thval" style="color:var(--text)">0.50</strong>
+      </label>
+    </div>
+  </div>
+
+  <div id="loading" class="card hidden">
+    <div class="spinner"></div>
+    <p style="text-align:center;color:var(--muted);margin:12px 0 0;font-size:13px">Analysing&hellip;</p>
+  </div>
+
+  <div id="error" class="card hidden"><span class="err" id="errtext"></span></div>
+
+  <div id="result" class="card hidden">
+    <div class="verdict">
+      <div id="badge" class="badge"></div>
+      <div class="meter">
+        <div class="bar"><span id="fill"></span></div>
+        <div class="meter-labels"><span>real</span><span id="prob"></span><span>fake</span></div>
+      </div>
+    </div>
+    <div class="images" id="images"></div>
+    <div class="meta" id="meta"></div>
+    <div class="note" id="note"></div>
+  </div>
+</div>
+
+<script>
+const drop = document.getElementById('drop');
+const fileInput = document.getElementById('file');
+const thresholdEl = document.getElementById('threshold');
+const thvalEl = document.getElementById('thval');
+const explainEl = document.getElementById('explain');
+const loadingEl = document.getElementById('loading');
+const resultEl = document.getElementById('result');
+const errorEl = document.getElementById('error');
+
+let lastFile = null;
+
+thresholdEl.addEventListener('input', () => {
+  thvalEl.textContent = Number(thresholdEl.value).toFixed(2);
+});
+// Re-scoring on release is cheap and makes the threshold slider feel live.
+thresholdEl.addEventListener('change', () => { if (lastFile) analyse(lastFile); });
+explainEl.addEventListener('change', () => { if (lastFile) analyse(lastFile); });
+
+drop.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', () => {
+  if (fileInput.files.length) analyse(fileInput.files[0]);
+});
+['dragenter', 'dragover'].forEach(evt =>
+  drop.addEventListener(evt, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(evt =>
+  drop.addEventListener(evt, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => {
+  const file = e.dataTransfer.files[0];
+  if (file) analyse(file);
+});
+
+function show(el, visible) { el.classList.toggle('hidden', !visible); }
+
+async function analyse(file) {
+  lastFile = file;
+  show(errorEl, false);
+  show(resultEl, false);
+  show(loadingEl, true);
+
+  const body = new FormData();
+  body.append('file', file);
+  const params = new URLSearchParams({
+    explain: explainEl.checked,
+    threshold: thresholdEl.value,
+  });
+
+  try {
+    const response = await fetch(`/api/predict?${params}`, { method: 'POST', body });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || `Request failed (${response.status})`);
+    render(data, file);
+  } catch (err) {
+    document.getElementById('errtext').textContent = err.message;
+    show(errorEl, true);
+  } finally {
+    show(loadingEl, false);
+  }
+}
+
+function render(data, file) {
+  const isFake = data.label === 'FAKE';
+  const pct = (data.fake_probability * 100).toFixed(1);
+
+  const badge = document.getElementById('badge');
+  badge.textContent = data.label;
+  badge.className = 'badge ' + (isFake ? 'fake' : 'real');
+
+  const fill = document.getElementById('fill');
+  fill.style.width = pct + '%';
+  fill.style.background = isFake ? 'var(--fake)' : 'var(--real)';
+  document.getElementById('prob').textContent = `P(fake) = ${pct}%`;
+
+  const images = document.getElementById('images');
+  images.innerHTML = '';
+  const original = document.createElement('figure');
+  original.innerHTML = `<img src="${URL.createObjectURL(file)}" alt="uploaded image">
+                        <figcaption>Input</figcaption>`;
+  images.appendChild(original);
+
+  data.faces.forEach((face, i) => {
+    if (!face.heatmap) return;
+    const figure = document.createElement('figure');
+    figure.innerHTML = `<img src="${face.heatmap}" alt="Grad-CAM heatmap">
+      <figcaption>Face ${i + 1} &middot; ${face.label} &middot;
+        P(fake) = ${(face.fake_probability * 100).toFixed(1)}%</figcaption>`;
+    images.appendChild(figure);
+  });
+
+  document.getElementById('meta').innerHTML = [
+    `Faces analysed: <strong>${data.faces.length}</strong>`,
+    `Confidence: <strong>${(data.confidence * 100).toFixed(1)}%</strong>`,
+    `Threshold: <strong>${data.threshold}</strong>`,
+    `Inference: <strong>${data.inference_ms} ms</strong>`,
+  ].join('');
+
+  document.getElementById('note').textContent = data.face_detected
+    ? 'Warm colours mark the regions that pushed the decision towards FAKE.'
+    : 'No face was detected, so the whole image was classified. The model is trained on '
+      + 'cropped faces, so treat this result as unreliable.';
+
+  show(resultEl, true);
+}
+</script>
+</body>
+</html>

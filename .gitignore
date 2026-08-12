@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.py[cod]
+.DS_Store
+
+# Datasets and training outputs are large and regenerable.
+# Leading slash anchors these to the repo root - a bare "data/" would also
+# ignore src/data/, which is source code.
+/data/
+/runs/
+*.pt
+*.pth
+
+.ipynb_checkpoints/
+.vscode/
+.idea/

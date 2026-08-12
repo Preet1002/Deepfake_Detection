@@ -1,0 +1,22 @@
+# Fast sanity-check run: small images, tiny network, 2 epochs.
+# Use this to prove the pipeline works end to end before starting a real run.
+
+data:
+  root: data/processed
+  img_size: 96
+  batch_size: 32
+  num_workers: 2
+
+model:
+  stem_channels: 16
+  stage_channels: [32, 64, 128]
+  blocks_per_stage: [1, 1, 1]
+  use_srm: true
+  dropout: 0.1
+
+train:
+  epochs: 2
+  lr: 0.001
+  warmup_epochs: 0
+  early_stop_patience: 10
+  out_dir: runs/quick

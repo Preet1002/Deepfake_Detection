@@ -1,0 +1,26 @@
+# Ablation: identical to default.yaml but with the noise-residual stream removed.
+# Train both and compare AUC/EER - this is the headline experiment for the report.
+
+data:
+  root: data/processed
+  img_size: 160
+  batch_size: 64
+  num_workers: 4
+
+model:
+  stem_channels: 32
+  stage_channels: [64, 128, 256, 384]
+  blocks_per_stage: [2, 2, 2, 2]
+  use_srm: false
+  se_ratio: 0.25
+  dropout: 0.3
+
+train:
+  epochs: 30
+  lr: 0.0003
+  weight_decay: 0.05
+  warmup_epochs: 2
+  label_smoothing: 0.05
+  early_stop_patience: 7
+  out_dir: runs/dfnet_no_srm
+  seed: 42

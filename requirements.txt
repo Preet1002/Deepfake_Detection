@@ -1,0 +1,13 @@
+torch>=2.2
+torchvision>=0.17
+numpy>=1.26
+pillow>=10.0
+# OpenCV 5 dropped cv2.CascadeClassifier; we rely on the bundled Haar cascade.
+opencv-python>=4.9,<5
+scikit-learn>=1.4
+matplotlib>=3.8
+pyyaml>=6.0
+tqdm>=4.66
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9

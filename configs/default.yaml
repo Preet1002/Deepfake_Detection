@@ -1,0 +1,36 @@
+# Main training config, tuned for an 8 GB M1 MacBook Air.
+# Anything omitted here falls back to the defaults in src/config.py.
+
+data:
+  root: data/processed
+  img_size: 160          # 160 trains ~2x faster than 224 and GAN artefacts survive
+  batch_size: 64
+  num_workers: 4
+
+model:
+  stem_channels: 32
+  stage_channels: [64, 128, 256, 384]
+  blocks_per_stage: [2, 2, 2, 2]
+  use_srm: true          # set false for the ablation "does the noise stream help?"
+  se_ratio: 0.25
+  dropout: 0.3
+
+aug:
+  hflip: 0.5
+  jpeg: 0.5
+  jpeg_quality: [40, 95]
+  downscale: 0.3
+  blur: 0.2
+  color_jitter: 0.5
+  random_erasing: 0.25
+
+train:
+  epochs: 30
+  lr: 0.0003
+  weight_decay: 0.05
+  warmup_epochs: 2
+  label_smoothing: 0.05
+  early_stop_patience: 7
+  out_dir: runs/dfnet
+  seed: 42
+  device: auto
