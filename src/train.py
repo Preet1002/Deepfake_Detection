@@ -129,12 +129,12 @@ def main() -> None:
         model.load_state_dict(state["model_state"])
         print(f"Warm-started from {args.resume}")
 
-    print(f"Device            : {device}")
-    print(f"Trainable params  : {count_parameters(model):,}")
+    print(f"Device            : {device}", flush=True)
+    print(f"Trainable params  : {count_parameters(model):,}", flush=True)
     print(f"Train images      : {len(train_loader.dataset):,} "
-          f"{train_loader.dataset.class_counts()}")
+          f"{train_loader.dataset.class_counts()}", flush=True)
     print(f"Val images        : {len(val_loader.dataset):,} "
-          f"{val_loader.dataset.class_counts()}")
+          f"{val_loader.dataset.class_counts()}", flush=True)
 
     criterion = nn.BCEWithLogitsLoss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=config.train.lr,
@@ -164,7 +164,7 @@ def main() -> None:
 
         print(f"Epoch {epoch + 1:3d}/{config.train.epochs}  "
               f"train_loss={train_loss:.4f}  val_loss={val_loss:.4f}  "
-              f"{format_metrics(val_metrics)}  ({elapsed:.0f}s)")
+              f"{format_metrics(val_metrics)}  ({elapsed:.0f}s)", flush=True)
 
         history.append({"epoch": epoch + 1, "train_loss": train_loss,
                         "val_loss": val_loss, **val_metrics})
@@ -176,7 +176,8 @@ def main() -> None:
             best_auc, best_epoch = val_metrics["auc"], epoch
             save_checkpoint(out_dir / "best.pt", model, config.to_dict(),
                             epoch + 1, val_metrics)
-            print(f"  -> new best (AUC {best_auc:.4f}), saved {out_dir / 'best.pt'}")
+            print(f"  -> new best (AUC {best_auc:.4f}), saved {out_dir / 'best.pt'}",
+                  flush=True)
 
         save_checkpoint(out_dir / "last.pt", model, config.to_dict(), epoch + 1, val_metrics)
 

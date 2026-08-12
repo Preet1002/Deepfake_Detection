@@ -33,6 +33,16 @@ SPLIT_ALIASES = {
 }
 
 
+def list_images(directory: Path) -> List[Path]:
+    """List image files under `directory`, recursing into subfolders.
+
+    Measured against an os.scandir version on 20k files: rglob was slightly
+    faster, since it already uses scandir internally and reads the file type
+    from the directory record rather than calling stat(). Kept simple.
+    """
+    return sorted(p for p in directory.rglob("*") if p.suffix.lower() in IMAGE_EXTENSIONS)
+
+
 def resolve_split_dir(root: str | Path, split: str) -> Path:
     """Find the directory for `split` under `root`, accepting name variants."""
     root = Path(root)
@@ -63,8 +73,9 @@ class FaceImageDataset(Dataset):
             class_dir = self.split_dir / class_name
             if not class_dir.is_dir():
                 continue
-            paths = [p for p in sorted(class_dir.rglob("*"))
-                     if p.suffix.lower() in IMAGE_EXTENSIONS]
+            print(f"  scanning {class_dir} ...", end="", flush=True)
+            paths = list_images(class_dir)
+            print(f" {len(paths):,} images", flush=True)
             if limit_per_class is not None and len(paths) > limit_per_class:
                 # Shuffle before truncating: filenames are often grouped by
                 # source identity, so taking the alphabetical head would sample
