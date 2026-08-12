@@ -15,7 +15,10 @@ import yaml
 
 @dataclass
 class DataConfig:
-    root: str = "data/processed"          # expects root/{train,val,test}/{real,fake}
+    # One path, or a list of paths to train on jointly. Multi-source training is
+    # the main defence against learning a single dataset's build pipeline
+    # instead of actual generator artefacts.
+    root: Any = "data/processed"          # str | list[str]; root/{train,val,test}/{real,fake}
     img_size: int = 160
     batch_size: int = 64
     num_workers: int = 4

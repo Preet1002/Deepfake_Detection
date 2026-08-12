@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import random
 from pathlib import Path
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, List, Optional, Sequence, Tuple
 
 import torch
 from PIL import Image
@@ -77,33 +77,48 @@ def resolve_class_dir(split_dir: Path, class_name: str) -> Optional[Path]:
 class FaceImageDataset(Dataset):
     """Loads face images from a split directory containing real/ and fake/."""
 
-    def __init__(self, split_dir: str | Path, transform: Callable | None = None,
+    def __init__(self, split_dir: str | Path | Sequence[str | Path],
+                 transform: Callable | None = None,
                  limit_per_class: Optional[int] = None, seed: int = 42):
-        self.split_dir = Path(split_dir)
-        if not self.split_dir.is_dir():
-            raise FileNotFoundError(f"Split directory not found: {self.split_dir}")
+        # Accept one directory or several; `limit_per_class` then applies per
+        # source, so a large dataset cannot drown out a small one.
+        if isinstance(split_dir, (str, Path)):
+            split_dirs = [Path(split_dir)]
+        else:
+            split_dirs = [Path(d) for d in split_dir]
+        if not split_dirs:
+            raise ValueError("At least one split directory is required")
 
+        for directory in split_dirs:
+            if not directory.is_dir():
+                raise FileNotFoundError(f"Split directory not found: {directory}")
+
+        self.split_dirs = split_dirs
+        self.split_dir = split_dirs[0]          # kept for messages/back-compat
         self.transform = transform
         self.samples: List[Tuple[Path, int]] = []
-        for class_name, label in CLASS_TO_LABEL.items():
-            class_dir = resolve_class_dir(self.split_dir, class_name)
-            if class_dir is None:
-                continue
-            print(f"  scanning {class_dir} ...", end="", flush=True)
-            paths = list_images(class_dir)
-            print(f" {len(paths):,} images", flush=True)
-            if limit_per_class is not None and len(paths) > limit_per_class:
-                # Shuffle before truncating: filenames are often grouped by
-                # source identity, so taking the alphabetical head would sample
-                # a biased subset of people.
-                random.Random(seed).shuffle(paths)
-                paths = paths[:limit_per_class]
-            self.samples.extend((path, label) for path in paths)
+
+        for directory in split_dirs:
+            for class_name, label in CLASS_TO_LABEL.items():
+                class_dir = resolve_class_dir(directory, class_name)
+                if class_dir is None:
+                    continue
+                print(f"  scanning {class_dir} ...", end="", flush=True)
+                paths = list_images(class_dir)
+                print(f" {len(paths):,} images", flush=True)
+                if limit_per_class is not None and len(paths) > limit_per_class:
+                    # Shuffle before truncating: filenames are often grouped by
+                    # source identity, so taking the alphabetical head would
+                    # sample a biased subset of people.
+                    random.Random(seed).shuffle(paths)
+                    paths = paths[:limit_per_class]
+                self.samples.extend((path, label) for path in paths)
 
         if not self.samples:
+            listed = ", ".join(str(d) for d in split_dirs)
             raise RuntimeError(
-                f"No images under {self.split_dir}. Expected {self.split_dir}/real and "
-                f"{self.split_dir}/fake with image files."
+                f"No images under {listed}. Expected real/ and fake/ subfolders "
+                f"with image files."
             )
 
     def __len__(self) -> int:
@@ -143,7 +158,9 @@ def build_dataloaders(config, splits=("train", "val")) -> dict[str, DataLoader]:
     'train' gets augmentation plus class-balanced sampling; everything else gets
     the deterministic eval transform and sequential order.
     """
-    root = Path(config.data.root)
+    raw_root = config.data.root
+    roots = [Path(raw_root)] if isinstance(raw_root, (str, Path)) \
+        else [Path(r) for r in raw_root]
     train_tf = build_train_transform(config.data.img_size, config.aug)
     eval_tf = build_eval_transform(config.data.img_size)
 
@@ -151,7 +168,7 @@ def build_dataloaders(config, splits=("train", "val")) -> dict[str, DataLoader]:
     for split in splits:
         is_train = split == "train"
         dataset = FaceImageDataset(
-            resolve_split_dir(root, split),
+            [resolve_split_dir(r, split) for r in roots],
             train_tf if is_train else eval_tf,
             limit_per_class=config.data.limit_per_class,
             seed=config.train.seed,
