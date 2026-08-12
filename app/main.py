@@ -106,6 +106,7 @@ async def predict(
                 "fake_probability": round(face.fake_probability, 4),
                 "label": face.label,
                 "heatmap": to_data_uri(face.heatmap_image) if face.heatmap_image else None,
+                "heatmap_target": face.heatmap_target,
             }
             for face in result.faces
         ],

@@ -203,8 +203,11 @@ function render(data, file) {
     `Inference: <strong>${data.inference_ms} ms</strong>`,
   ].join('');
 
+  const target = (data.faces.find(f => f.heatmap_target) || {}).heatmap_target;
   document.getElementById('note').textContent = data.face_detected
-    ? 'Warm colours mark the regions that pushed the decision towards FAKE.'
+    ? (target
+        ? `Warm colours mark the regions that most supported the ${target} verdict.`
+        : 'Enable the heatmap to see which regions drove the decision.')
     : 'No face was detected, so the whole image was classified. The model is trained on '
       + 'cropped faces, so treat this result as unreliable.';
 

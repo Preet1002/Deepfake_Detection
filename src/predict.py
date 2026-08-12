@@ -27,6 +27,7 @@ class FaceResult:
     fake_probability: float
     label: str
     heatmap_image: Optional[Image.Image] = None
+    heatmap_target: Optional[str] = None        # which verdict the map explains
 
 
 @dataclass
@@ -63,10 +64,10 @@ class Detector:
         tensor = self.transform(face).unsqueeze(0).to(self.device)
         return float(torch.sigmoid(self.model(tensor))[0])
 
-    def _cam(self, face: Image.Image) -> Image.Image:
+    def _cam(self, face: Image.Image, target: str = "auto") -> Image.Image:
         tensor = self.transform(face).unsqueeze(0).to(self.device)
         with GradCAM(self.model) as cam:
-            heatmap = cam(tensor)
+            heatmap = cam(tensor, target=target)
         return overlay_heatmap(face, heatmap)
 
     def predict(self, image: str | Path | Image.Image, *, detect_faces: bool = True,
@@ -87,11 +88,15 @@ class Detector:
         faces = []
         for crop, box in crops:
             probability = self._score(crop)
+            label = self._label(probability)
             faces.append(FaceResult(
                 box=box,
                 fake_probability=probability,
-                label=self._label(probability),
-                heatmap_image=self._cam(crop) if explain else None,
+                label=label,
+                # Explain the verdict we actually gave, not always "fake":
+                # the opposite class produces an all-zero map.
+                heatmap_image=self._cam(crop, label.lower()) if explain else None,
+                heatmap_target=label if explain else None,
             ))
 
         # Aggregate with max: one convincing fake face is enough to flag the

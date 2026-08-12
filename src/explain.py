@@ -44,10 +44,24 @@ class GradCAM:
             handle.remove()
         self._handles.clear()
 
-    def __call__(self, image_tensor: torch.Tensor) -> np.ndarray:
-        """image_tensor: (1,C,H,W) normalized. Returns HxW heatmap in [0,1]."""
+    def __call__(self, image_tensor: torch.Tensor, target: str = "auto") -> np.ndarray:
+        """image_tensor: (1,C,H,W) normalized. Returns HxW heatmap in [0,1].
+
+        `target` picks which verdict to explain:
+          "fake" - regions pushing the single logit up
+          "real" - regions pushing it down
+          "auto" - whichever the model actually predicted (default)
+
+        This matters because the network has one logit, not two. Explaining
+        "fake" on a confidently-real image backprops a strongly negative
+        gradient, ReLU clamps the whole map to zero, and the overlay comes out
+        blank - which is exactly what a user uploading a genuine photo would
+        see. Explaining the predicted class always yields a usable map.
+        """
         if image_tensor.dim() != 4 or image_tensor.size(0) != 1:
             raise ValueError("GradCAM expects a single image with shape (1,C,H,W)")
+        if target not in {"auto", "fake", "real"}:
+            raise ValueError(f"target must be auto/fake/real, got {target!r}")
 
         was_training = self.model.training
         self.model.eval()
@@ -56,8 +70,12 @@ class GradCAM:
         with torch.enable_grad():
             image_tensor = image_tensor.detach().requires_grad_(True)
             logit = self.model(image_tensor).sum()
+            if target == "auto":
+                sign = 1.0 if logit.item() >= 0 else -1.0
+            else:
+                sign = 1.0 if target == "fake" else -1.0
             self.model.zero_grad(set_to_none=True)
-            logit.backward()
+            (sign * logit).backward()
 
         if self.activations is None or self.gradients is None:
             raise RuntimeError("No activations captured - is the target layer in the graph?")
