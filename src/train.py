@@ -107,11 +107,13 @@ def train_one_epoch(model, loader, device, criterion, optimizer, config: Config,
     return running_loss / max(1, seen), global_step
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
+    """Entry point. `argv=None` reads sys.argv; pass a list to call in-process
+    (e.g. from a notebook), which keeps output streaming and tracebacks real."""
     parser = argparse.ArgumentParser(description="Train the DFNet deepfake detector")
     parser.add_argument("--config", default="configs/default.yaml")
     parser.add_argument("--resume", default=None, help="checkpoint to warm-start from")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     config = load_config(args.config)
     set_seed(config.train.seed)

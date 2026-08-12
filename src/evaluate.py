@@ -58,7 +58,8 @@ def plot_confusion(metrics: dict, path: Path) -> None:
     plt.close()
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
+    """See src.train.main for why argv is injectable."""
     parser = argparse.ArgumentParser(description="Evaluate a DFNet checkpoint")
     parser.add_argument("--checkpoint", default="runs/dfnet/best.pt")
     parser.add_argument("--split", default="test")
@@ -66,7 +67,7 @@ def main() -> None:
                         help="override the data root (use this for cross-dataset tests)")
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--out-dir", default=None)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     device = pick_device("auto")
     checkpoint = load_checkpoint(args.checkpoint, map_location=device)
