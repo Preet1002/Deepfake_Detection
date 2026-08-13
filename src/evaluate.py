@@ -75,7 +75,18 @@ def main(argv: list[str] | None = None) -> None:
     model_config = ModelConfig(**saved["model"]) if "model" in saved else ModelConfig()
     data_config = DataConfig(**saved["data"]) if "data" in saved else DataConfig()
 
-    root = Path(args.data_root or data_config.root)
+    # A multi-source checkpoint stores data.root as a list. Evaluate on the
+    # first source by default and say so, rather than dying in Path(list).
+    if args.data_root:
+        root = Path(args.data_root)
+    elif isinstance(data_config.root, (list, tuple)):
+        root = Path(data_config.root[0])
+        if len(data_config.root) > 1:
+            print(f"Checkpoint was trained on {len(data_config.root)} sources; "
+                  f"evaluating on the first ({root}).\n"
+                  f"Pass --data-root to score a different one.")
+    else:
+        root = Path(data_config.root)
     out_dir = Path(args.out_dir or (Path(args.checkpoint).parent / f"eval_{args.split}"))
     out_dir.mkdir(parents=True, exist_ok=True)
 
