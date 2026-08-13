@@ -38,14 +38,59 @@ def mcnemar(correct_a: np.ndarray, correct_b: np.ndarray) -> tuple[int, int, flo
     return only_a, only_b, min(1.0, 2 * tail)
 
 
+def bound_from_error_counts(errors_a: int, errors_b: int, name_a: str, name_b: str) -> None:
+    """Worst-case McNemar p when only the error totals survive, not the predictions.
+
+    Write b = #(A right, B wrong) and c = #(B right, A wrong). Whatever the
+    overlap, b - c = errors_b - errors_a exactly, and c is capped by errors_a.
+    Significance is weakest when the two error sets are disjoint, so evaluating
+    that corner bounds the p-value for every possible overlap.
+    """
+    from math import comb
+
+    diff = errors_b - errors_a
+    if diff <= 0:
+        print("Model A does not have fewer errors; nothing to bound.")
+        return
+
+    worst_c = errors_a                 # every A-error is also a B-success
+    worst_b = worst_c + diff
+    n = worst_b + worst_c
+    k = min(worst_b, worst_c)
+    p = min(1.0, 2 * sum(comb(n, i) for i in range(k + 1)) / (2 ** n))
+
+    print(f"{name_a}: {errors_a:,} errors   {name_b}: {errors_b:,} errors")
+    print(f"  b - c is fixed at {diff:,} regardless of overlap")
+    print(f"  worst case (disjoint error sets): b={worst_b:,}, c={worst_c:,}")
+    print(f"  McNemar exact p <= {p:.3g}")
+    if p < 0.001:
+        print("  -> safe to report: p < 0.001 (McNemar's exact test), "
+              "bounded over every possible overlap")
+    elif p < 0.05:
+        print(f"  -> significant at 0.05, but only just: p <= {p:.3g}")
+    else:
+        print("  -> NOT significant even in the best case; the error counts alone "
+              "cannot establish a difference here.")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--a", required=True, help="predictions.npz for model A")
-    parser.add_argument("--b", required=True, help="predictions.npz for model B")
+    parser.add_argument("--errors-a", type=int, default=None,
+                        help="error count for A (use with --errors-b when "
+                             "predictions.npz is unavailable)")
+    parser.add_argument("--errors-b", type=int, default=None)
+    parser.add_argument("--a", help="predictions.npz for model A")
+    parser.add_argument("--b", help="predictions.npz for model B")
     parser.add_argument("--name-a", default="A")
     parser.add_argument("--name-b", default="B")
     parser.add_argument("--threshold", type=float, default=0.5)
     args = parser.parse_args()
+
+    if args.errors_a is not None and args.errors_b is not None:
+        bound_from_error_counts(args.errors_a, args.errors_b, args.name_a, args.name_b)
+        return
+    if not (args.a and args.b):
+        raise SystemExit("Pass --a and --b (predictions.npz), or --errors-a and --errors-b.")
 
     a = np.load(args.a)
     b = np.load(args.b)
