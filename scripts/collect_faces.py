@@ -18,12 +18,16 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import time
 import urllib.error
 import urllib.request
 from pathlib import Path
 
-DEFAULT_URL = "https://thispersondoesnotexist.com/"
+from PIL import Image, UnidentifiedImageError
+
+# The site root serves an HTML page; the image itself is a separate path.
+DEFAULT_URL = "https://thispersondoesnotexist.com/random-person.jpeg"
 
 # Some hosts reject the default urllib agent outright.
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; academic-dataset-collection)"}
@@ -33,6 +37,22 @@ def fetch(url: str, timeout: float) -> bytes:
     request = urllib.request.Request(url, headers=HEADERS)
     with urllib.request.urlopen(request, timeout=timeout) as response:
         return response.read()
+
+
+def image_size(payload: bytes) -> tuple[int, int] | None:
+    """(width, height) if the bytes decode as an image, else None.
+
+    Worth checking every response, not just the first: a 200 carrying an HTML
+    landing page, a rate-limit notice, or a CAPTCHA is still a 200, and saving
+    it under a .jpg name produces a folder that only fails much later at scoring
+    time. Ask the decoder rather than trusting the status code.
+    """
+    try:
+        with Image.open(io.BytesIO(payload)) as image:
+            image.verify()
+            return image.size
+    except (UnidentifiedImageError, OSError, ValueError):
+        return None
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -70,6 +90,17 @@ def main(argv: list[str] | None = None) -> None:
                     "browser, or collect the images by hand.")
             time.sleep(args.delay * 2)
             continue
+
+        size = image_size(payload)
+        if size is None:
+            head = payload[:80].decode("utf-8", "replace").replace("\n", " ")
+            raise SystemExit(
+                f"The response is not an image ({len(payload):,} bytes starting "
+                f"{head!r}).\n"
+                f"URL: {args.url}\n"
+                f"The site is probably serving an HTML page rather than the raw "
+                f"image. Open the URL in a browser, right-click the face, copy "
+                f"the image address, and pass it with --url.")
 
         digest = hashlib.md5(payload).hexdigest()
         if digest in seen:
